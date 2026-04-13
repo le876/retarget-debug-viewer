@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>UMI Retarget Debug</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: "LXGW WenKai", "Noto Sans SC", sans-serif;
+      background: #f5f7fb;
+      color: #1a2233;
+    }
+    .wrap {
+      max-width: 1800px;
+      margin: 0 auto;
+      padding: 20px 24px 28px;
+    }
+    .summary {
+      background: #ffffff;
+      border: 1px solid #d7deea;
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(27, 39, 75, 0.08);
+    }
+    .summary h1 {
+      margin: 0 0 10px;
+      font-size: 22px;
+    }
+    .summary p {
+      margin: 0 0 8px;
+      color: #44506a;
+    }
+    .summary ul {
+      margin: 0 0 10px 18px;
+      color: #33415c;
+      line-height: 1.5;
+    }
+    .summary li {
+      margin: 3px 0;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 12px 0 14px;
+    }
+    .toolbar.secondary {
+      margin-top: 8px;
+    }
+    .variant-btn {
+      border: 1px solid #b8c7dd;
+      background: #f3f7ff;
+      color: #21314f;
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .variant-btn.active {
+      background: #1f4ea3;
+      color: #ffffff;
+      border-color: #1f4ea3;
+    }
+    .action-btn {
+      border: 1px solid #d4dceb;
+      background: #ffffff;
+      color: #23314d;
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .slider-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: #ffffff;
+      border: 1px solid #d4dceb;
+      border-radius: 10px;
+      font-size: 13px;
+      color: #23314d;
+    }
+    .slider-wrap input[type="range"] {
+      width: 220px;
+    }
+    .plot-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #d7deea;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(27, 39, 75, 0.06);
+    }
+    .debug-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0 14px;
+    }
+    details.debug-card {
+      background: #ffffff;
+      border: 1px solid #d7deea;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(27, 39, 75, 0.06);
+      overflow: hidden;
+    }
+    details.debug-card summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #23314d;
+      background: #f8faff;
+      border-bottom: 1px solid #e5ebf5;
+    }
+    details.debug-card summary::-webkit-details-marker {
+      display: none;
+    }
+    details.debug-card pre {
+      border-radius: 0;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f6f8fc;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    #plot {
+      width: 100%;
+      height: 880px;
+      background: #ffffff;
+      border: 1px solid #d7deea;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(27, 39, 75, 0.08);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="summary">
+      <h1>UMI Retarget Debug</h1>
+      <p>轻量版调试页。左图是主回放，右图是校准段。当前保留 <b>W0 固定世界系</b>、<b>H0 初始头显系</b> 与 <b>H0+10</b> 三套原始数据/对照视图，并同时显示机器人默认中立骨架与重定向目标。</p>
+      <div class="toolbar" id="variantButtons"></div>
+      <ul>
+        <li><b>黑灰三轴</b>：<b>W0 固定世界系</b>。原点固定在初始帧 collar 平移位置，方向保持原始数据世界坐标系方向不变。当前默认展示这一层。</li>
+        <li><b>黑色 / 绿色 / 橙色实线</b>：分别是 <b>collar</b>、<b>左手</b>、<b>右手</b> 在 <b>W0 固定世界系</b> 下的原始轨迹。</li>
+        <li><b>黑色 / 绿色 / 橙色点划线</b>：分别是 collar、左手、右手在 <b>W0 固定世界系</b> 下的 z 轴向量。</li>
+        <li><b>H0 初始头显系</b> 仍保留在图例中作为对照：它在 W0 的基础上，保持重力方向不变，只在水平面做一个固定 yaw 对齐。这个 yaw 取自前 1 秒 <b>collar z 轴在 xy 平面投影</b> 的平均方向，并按约束令该投影指向 <b>H0 的 -x</b>。</li>
+        <li><b>H0+10</b> 是在 H0 的基础上，将 <b>collar / 左手 / 右手</b> 三条轨迹整体沿 <b>+x</b> 方向平移 <b>10cm</b> 得到的对照坐标系，并单独计算一套 <b>H0+10</b> 重定向目标。</li>
+        <li><b>H0 yaw 偏置</b> 当前默认固定为 <b>0°</b>，滑块只作用于 H0 显示层，用于在基于 <b>collar z 轴投影</b> 的对齐结果上继续微调固定平面偏角，不影响 W0，也不修改底层数据。</li>
+        <li>本页不再预加载 capstone / legacy 原始轨迹图层；目标是在保留重定向目标的同时尽量减轻加载负担。</li>
+      </ul>
+    </div>
+    <div class="plot-controls">
+      <label class="slider-wrap">
+        <span>H0 yaw 偏置</span>
+        <input id="h0YawBiasSlider" type="range" min="-45" max="45" step="1" value="0" />
+        <span id="h0YawBiasValue">0°</span>
+      </label>
+      <button class="action-btn" id="resetUserRotation">重置到 H0 默认值</button>
+    </div>
+    <div id="plot"></div>
+    <div class="debug-panels">
+      <details class="debug-card">
+        <summary>当前交互状态（点击展开）</summary>
+        <pre id="userRotationState"></pre>
+      </details>
+      <details class="debug-card">
+        <summary>当前数据摘要（点击展开）</summary>
+        <pre id="summaryJson"></pre>
+      </details>
+    </div>
+  </div>
+    <script>
+    const PAGE_DATA = __PAGE_DATA_JSON__;
+    const figures = PAGE_DATA.figures;
+    const summaries = PAGE_DATA.summaries;
+    const payloads = PAGE_DATA.payloads;
+    const variantLabels = PAGE_DATA.variantLabels;
+    let activeVariantKey = PAGE_DATA.activeVariantKey;
+let userRotationMatrix = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ];
+    let userRotationHistory = [];
+    let hoveredUserAxisMeta = null;
+    let currentFigure = null;
+    let currentUserTraceIndices = null;
+    let h0YawBiasDeg = 0;
+
+    function updateSummary() {
+      const summaryEl = document.getElementById('summaryJson');
+      summaryEl.textContent = JSON.stringify(summaries[activeVariantKey], null, 2);
+    }
+
+    function formatMatrix(matrix) {
+      return matrix.map((row) => row.map((value) => Number(value.toFixed(6))));
+    }
+
+    function updateUserRotationState() {
+      const stateEl = document.getElementById('userRotationState');
+      const payload = {
+        active_variant: activeVariantKey,
+        description: '轻量版页面只对 H0 显示层提供浏览器端 residual yaw 调节；当前默认不再额外施加固定偏置，只保留基于 collar z 轴方向计算得到的 yaw 对齐，W0 保持不变。',
+        h0_yaw_bias_deg: h0YawBiasDeg,
+        base_h0_yaw_align_rad: summaries[activeVariantKey].main_h0_yaw_align_rad,
+      };
+      stateEl.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function updateButtons() {
+      const container = document.getElementById('variantButtons');
+      container.innerHTML = '';
+      variantLabels.forEach((item) => {
+        const button = document.createElement('button');
+        button.className = 'variant-btn' + (item.key === activeVariantKey ? ' active' : '');
+        button.textContent = item.label;
+        button.onclick = () => switchVariant(item.key);
+        container.appendChild(button);
+      });
+    }
+
+    function matMul3(a, b) {
+      const out = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      for (let i = 0; i < 3; i += 1) {
+        for (let j = 0; j < 3; j += 1) {
+          out[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j];
+        }
+      }
+      return out;
+    }
+
+    function matVec3(m, v) {
+      return [
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+      ];
+    }
+
+    function vecAdd(a, b) {
+      return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    }
+
+    function vecSub(a, b) {
+      return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+
+    function vecScale(v, s) {
+      return [v[0] * s, v[1] * s, v[2] * s];
+    }
+
+    function vecNorm(v) {
+      return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    }
+
+    function vecNormalize(v) {
+      const n = vecNorm(v);
+      if (n < 1e-12) {
+        return [0, 0, 0];
+      }
+      return [v[0] / n, v[1] / n, v[2] / n];
+    }
+
+    function rotationAroundAxis(axis, degrees) {
+      const theta = degrees * Math.PI / 180.0;
+      const [x, y, z] = vecNormalize(axis);
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+      const t = 1.0 - c;
+      return [
+        [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+        [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+        [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+      ];
+    }
+
+    function rotatePointAroundOrigin(origin, point, rotation) {
+      const rel = vecSub(point, origin);
+      return vecAdd(origin, matVec3(rotation, rel));
+    }
+
+    function rotateSegmentsAroundOrigin(origin, segments, rotation) {
+      return segments.map((segment) => [
+        rotatePointAroundOrigin(origin, segment[0], rotation),
+        rotatePointAroundOrigin(origin, segment[1], rotation),
+      ]);
+    }
+
+    function setTraceFromPoints(trace, points) {
+      trace.x = points.map((p) => p[0]);
+      trace.y = points.map((p) => p[1]);
+      trace.z = points.map((p) => p[2]);
+    }
+
+    function setTraceFromSegments(trace, segments) {
+      const x = [];
+      const y = [];
+      const z = [];
+      segments.forEach((segment) => {
+        x.push(segment[0][0], segment[1][0], null);
+        y.push(segment[0][1], segment[1][1], null);
+        z.push(segment[0][2], segment[1][2], null);
+      });
+      trace.x = x;
+      trace.y = y;
+      trace.z = z;
+    }
+
+    function getH0Palette() {
+      const biased = Math.abs(h0YawBiasDeg) > 1e-9;
+      if (biased) {
+        return {
+          axis: ['#1d4ed8', '#2563eb', '#60a5fa'],
+          collar: '#1d4ed8',
+          left: '#7c3aed',
+          right: '#db2777',
+        };
+      }
+      return {
+        axis: ['#111827', '#4b5563', '#9ca3af'],
+        collar: '#111827',
+        left: '#16a34a',
+        right: '#f97316',
+      };
+    }
+
+    function applyTraceStyle(trace, color) {
+      if (!trace) return;
+      if (trace.line) {
+        trace.line.color = color;
+      }
+      if (trace.marker) {
+        trace.marker.color = color;
+      }
+    }
+
+    function findTraceIndex(data, sceneName, traceName, axisKey = null) {
+      return data.findIndex((trace) => {
+        if (trace.scene !== sceneName || trace.name !== traceName) {
+          return false;
+        }
+        if (axisKey === null) {
+          return true;
+        }
+        const meta = trace.meta || null;
+        return meta && meta.axis_key === axisKey;
+      });
+    }
+
+    function cloneFigure(key) {
+      return JSON.parse(JSON.stringify(figures[key]));
+    }
+
+    function collectH0TraceIndices(figure) {
+      const indices = [];
+      payloads[activeVariantKey].datasets.forEach((dataset, datasetIndex) => {
+        const sceneName = datasetIndex === 0 ? 'scene' : 'scene2';
+        indices.push({
+          sceneName,
+          axisX: findTraceIndex(figure.data, sceneName, 'H0 初始头显系', 'x'),
+          axisY: findTraceIndex(figure.data, sceneName, 'H0 初始头显系', 'y'),
+          axisZ: findTraceIndex(figure.data, sceneName, 'H0 初始头显系', 'z'),
+          collar: findTraceIndex(figure.data, sceneName, 'collar 轨迹（H0）'),
+          left: findTraceIndex(figure.data, sceneName, '左手轨迹（H0）'),
+          right: findTraceIndex(figure.data, sceneName, '右手轨迹（H0）'),
+          collarZ: findTraceIndex(figure.data, sceneName, 'collar z 轴（H0）'),
+          leftZ: findTraceIndex(figure.data, sceneName, '左手 z 轴（H0）'),
+          rightZ: findTraceIndex(figure.data, sceneName, '右手 z 轴（H0）'),
+          collarFirst: findTraceIndex(figure.data, sceneName, 'collar 首帧（H0）'),
+          leftFirst: findTraceIndex(figure.data, sceneName, '左手首帧（H0）'),
+          rightFirst: findTraceIndex(figure.data, sceneName, '右手首帧（H0）'),
+        });
+      });
+      return indices;
+    }
+
+    function getH0LayerState(payload) {
+      const state = [];
+      const rot = rotationAroundAxis([0, 0, 1], h0YawBiasDeg);
+      payload.datasets.forEach((dataset, datasetIndex) => {
+        const sceneName = datasetIndex === 0 ? 'scene' : 'scene2';
+        const basis = dataset.frames.h0_initial_headset;
+        const origin = basis.origin_xyz;
+        state.push({
+          sceneName,
+          axisSegments: {
+            x: basis.world_axes.x,
+            y: basis.world_axes.y,
+            z: basis.world_axes.z,
+          },
+          collar: basis.collar_positions.map((point) => rotatePointAroundOrigin(origin, point, rot)),
+          left: basis.left_positions.map((point) => rotatePointAroundOrigin(origin, point, rot)),
+          right: basis.right_positions.map((point) => rotatePointAroundOrigin(origin, point, rot)),
+          collarZ: rotateSegmentsAroundOrigin(origin, basis.collar_z_segments, rot),
+          leftZ: rotateSegmentsAroundOrigin(origin, basis.left_z_segments, rot),
+          rightZ: rotateSegmentsAroundOrigin(origin, basis.right_z_segments, rot),
+        });
+      });
+      return state;
+    }
+
+    function applyH0UpdatesToFigure(figure) {
+      const payload = payloads[activeVariantKey];
+      const traceIndices = collectH0TraceIndices(figure);
+      const state = getH0LayerState(payload);
+      const palette = getH0Palette();
+      state.forEach((item, idx) => {
+        const t = traceIndices[idx];
+        if (!t) return;
+        const updates = [
+          [t.axisX, 'axis', item.axisSegments.x],
+          [t.axisY, 'axis', item.axisSegments.y],
+          [t.axisZ, 'axis', item.axisSegments.z],
+          [t.collar, 'points', item.collar],
+          [t.left, 'points', item.left],
+          [t.right, 'points', item.right],
+          [t.collarZ, 'segments', item.collarZ],
+          [t.leftZ, 'segments', item.leftZ],
+          [t.rightZ, 'segments', item.rightZ],
+          [t.collarFirst, 'points', [item.collar[0]]],
+          [t.leftFirst, 'points', [item.left[0]]],
+          [t.rightFirst, 'points', [item.right[0]]],
+        ];
+        updates.forEach(([index, kind, value]) => {
+          if (index < 0) return;
+          const trace = figure.data[index];
+          if (!trace) return;
+          if (kind === 'axis') {
+            trace.x = [value[0][0], value[1][0]];
+            trace.y = [value[0][1], value[1][1]];
+            trace.z = [value[0][2], value[1][2]];
+          } else if (kind === 'points') {
+            setTraceFromPoints(trace, value);
+          } else if (kind === 'segments') {
+            setTraceFromSegments(trace, value);
+          }
+        });
+
+        applyTraceStyle(figure.data[t.axisX], palette.axis[0]);
+        applyTraceStyle(figure.data[t.axisY], palette.axis[1]);
+        applyTraceStyle(figure.data[t.axisZ], palette.axis[2]);
+        applyTraceStyle(figure.data[t.collar], palette.collar);
+        applyTraceStyle(figure.data[t.left], palette.left);
+        applyTraceStyle(figure.data[t.right], palette.right);
+        applyTraceStyle(figure.data[t.collarZ], palette.collar);
+        applyTraceStyle(figure.data[t.leftZ], palette.left);
+        applyTraceStyle(figure.data[t.rightZ], palette.right);
+        applyTraceStyle(figure.data[t.collarFirst], palette.collar);
+        applyTraceStyle(figure.data[t.leftFirst], palette.left);
+        applyTraceStyle(figure.data[t.rightFirst], palette.right);
+      });
+    }
+
+    function fastUpdateH0Layer() {
+      const plot = document.getElementById('plot');
+      applyH0UpdatesToFigure(currentFigure);
+      const traceIndices = collectH0TraceIndices(currentFigure);
+      traceIndices.forEach((t) => {
+        [t.axisX, t.axisY, t.axisZ, t.collar, t.left, t.right, t.collarZ, t.leftZ, t.rightZ, t.collarFirst, t.leftFirst, t.rightFirst]
+          .filter((idx) => idx >= 0)
+          .forEach((idx) => {
+            const trace = currentFigure.data[idx];
+            const update = { x: [trace.x], y: [trace.y], z: [trace.z] };
+            if (trace.line) {
+              update['line.color'] = [trace.line.color];
+            }
+            if (trace.marker) {
+              update['marker.color'] = [trace.marker.color];
+            }
+            Plotly.restyle(plot, update, [idx]);
+          });
+      });
+    }
+
+    function getUserLayerState(payload) {
+      const state = [];
+      payload.datasets.forEach((dataset, datasetIndex) => {
+        const sceneName = datasetIndex === 0 ? 'scene' : 'scene2';
+        const basis = dataset.frames.user_openxr_to_robot;
+        const origin = basis.quest_origin_robot_xyz;
+        state.push({
+          sceneName,
+          origin,
+          axisSegments: {
+            x: [
+              rotatePointAroundOrigin(origin, basis.quest_axes.x[0], userRotationMatrix),
+              rotatePointAroundOrigin(origin, basis.quest_axes.x[1], userRotationMatrix),
+            ],
+            y: [
+              rotatePointAroundOrigin(origin, basis.quest_axes.y[0], userRotationMatrix),
+              rotatePointAroundOrigin(origin, basis.quest_axes.y[1], userRotationMatrix),
+            ],
+            z: [
+              rotatePointAroundOrigin(origin, basis.quest_axes.z[0], userRotationMatrix),
+              rotatePointAroundOrigin(origin, basis.quest_axes.z[1], userRotationMatrix),
+            ],
+          },
+          leftRaw: basis.left_raw_positions.map((point) => rotatePointAroundOrigin(origin, point, userRotationMatrix)),
+          rightRaw: basis.right_raw_positions.map((point) => rotatePointAroundOrigin(origin, point, userRotationMatrix)),
+          leftZ: rotateSegmentsAroundOrigin(origin, basis.left_z_segments, userRotationMatrix),
+          rightZ: rotateSegmentsAroundOrigin(origin, basis.right_z_segments, userRotationMatrix),
+        });
+      });
+      return state;
+    }
+
+    function collectUserTraceIndices(figure) {
+      const indices = [];
+      payloads[activeVariantKey].datasets.forEach((dataset, datasetIndex) => {
+        const sceneName = datasetIndex === 0 ? 'scene' : 'scene2';
+        indices.push({
+          sceneName,
+          axisX: findTraceIndex(figure.data, sceneName, 'Quest 坐标系（legacy 用户前向定义，y轴+90°）', 'x'),
+          axisY: findTraceIndex(figure.data, sceneName, 'Quest 坐标系（legacy 用户前向定义，y轴+90°）', 'y'),
+          axisZ: findTraceIndex(figure.data, sceneName, 'Quest 坐标系（legacy 用户前向定义，y轴+90°）', 'z'),
+          leftRaw: findTraceIndex(figure.data, sceneName, '左手原始轨迹（legacy 用户前向定义，y轴+90°）'),
+          rightRaw: findTraceIndex(figure.data, sceneName, '右手原始轨迹（legacy 用户前向定义，y轴+90°）'),
+          leftZ: findTraceIndex(figure.data, sceneName, '左手 z 轴（legacy 用户前向定义，y轴+90°）'),
+          rightZ: findTraceIndex(figure.data, sceneName, '右手 z 轴（legacy 用户前向定义，y轴+90°）'),
+          leftFirst: findTraceIndex(figure.data, sceneName, '左手首帧（legacy 用户前向定义，y轴+90°）'),
+          rightFirst: findTraceIndex(figure.data, sceneName, '右手首帧（legacy 用户前向定义，y轴+90°）'),
+        });
+      });
+      return indices;
+    }
+
+    function buildTraceUpdateMap(payload) {
+      const updates = [];
+      const state = getUserLayerState(payload);
+      state.forEach((item, idx) => {
+        const traceIndex = currentUserTraceIndices[idx];
+        updates.push(
+          {index: traceIndex.axisX, type: 'axis', segment: item.axisSegments.x},
+          {index: traceIndex.axisY, type: 'axis', segment: item.axisSegments.y},
+          {index: traceIndex.axisZ, type: 'axis', segment: item.axisSegments.z},
+          {index: traceIndex.leftRaw, type: 'points', points: item.leftRaw},
+          {index: traceIndex.rightRaw, type: 'points', points: item.rightRaw},
+          {index: traceIndex.leftZ, type: 'segments', segments: item.leftZ},
+          {index: traceIndex.rightZ, type: 'segments', segments: item.rightZ},
+          {index: traceIndex.leftFirst, type: 'points', points: [item.leftRaw[0]]},
+          {index: traceIndex.rightFirst, type: 'points', points: [item.rightRaw[0]]},
+        );
+      });
+      return updates.filter((item) => item.index >= 0);
+    }
+
+    function applyTraceUpdatesToFigure(figure, updates) {
+      updates.forEach((update) => {
+        const trace = figure.data[update.index];
+        if (!trace) return;
+        if (update.type === 'axis') {
+          trace.x = [update.segment[0][0], update.segment[1][0]];
+          trace.y = [update.segment[0][1], update.segment[1][1]];
+          trace.z = [update.segment[0][2], update.segment[1][2]];
+        } else if (update.type === 'points') {
+          setTraceFromPoints(trace, update.points);
+        } else if (update.type === 'segments') {
+          setTraceFromSegments(trace, update.segments);
+        }
+      });
+    }
+
+    function fastUpdateUserLayer() {
+      const payload = payloads[activeVariantKey];
+      const updates = buildTraceUpdateMap(payload);
+      applyTraceUpdatesToFigure(currentFigure, updates);
+      const plot = document.getElementById('plot');
+      updates.forEach((update) => {
+        const trace = currentFigure.data[update.index];
+        Plotly.restyle(plot, {
+          x: [trace.x],
+          y: [trace.y],
+          z: [trace.z],
+        }, [update.index]);
+      });
+    }
+
+    function renderActiveFigure() {
+      currentFigure = cloneFigure(activeVariantKey);
+      currentUserTraceIndices = collectUserTraceIndices(currentFigure);
+      const updates = buildTraceUpdateMap(payloads[activeVariantKey]);
+      applyTraceUpdatesToFigure(currentFigure, updates);
+      applyH0UpdatesToFigure(currentFigure);
+      return Plotly.react('plot', currentFigure.data, currentFigure.layout, {responsive: true, displaylogo: false});
+    }
+
+    function switchVariant(key) {
+      activeVariantKey = key;
+      renderActiveFigure();
+      updateSummary();
+      updateButtons();
+      updateUserRotationState();
+    }
+
+    function getUserAxisVector(axisKey) {
+      const basisAxes = payloads[activeVariantKey].datasets[0].frames.user_openxr_to_robot.quest_axes;
+      const axisSegment = basisAxes[axisKey];
+      const baseVector = vecSub(axisSegment[1], axisSegment[0]);
+      return matVec3(userRotationMatrix, baseVector);
+    }
+
+    function rotateUserBasis(axisKey, direction) {
+      const axisVector = getUserAxisVector(axisKey);
+      const rotation = rotationAroundAxis(axisVector, 90.0 * direction);
+      userRotationMatrix = matMul3(rotation, userRotationMatrix);
+      userRotationHistory.push({
+        axis: axisKey,
+        direction: direction > 0 ? '+90' : '-90',
+      });
+      fastUpdateUserLayer();
+      updateUserRotationState();
+    }
+
+    function bindPlotInteractions() {
+      const plot = document.getElementById('plot');
+      plot.on('plotly_hover', (eventData) => {
+        const point = eventData && eventData.points && eventData.points[0];
+        const meta = point && (point.fullData && point.fullData.meta ? point.fullData.meta : point.data && point.data.meta ? point.data.meta : null);
+        if (meta && meta.interactive === 'user_basis_axis' && meta.basis_key === 'user_openxr_to_robot') {
+          hoveredUserAxisMeta = meta;
+        } else {
+          hoveredUserAxisMeta = null;
+        }
+      });
+      plot.on('plotly_unhover', () => {
+        hoveredUserAxisMeta = null;
+      });
+      plot.on('plotly_click', (eventData) => {
+        const point = eventData && eventData.points && eventData.points[0];
+        const meta = point && (point.fullData && point.fullData.meta ? point.fullData.meta : point.data && point.data.meta ? point.data.meta : null);
+        if (meta && meta.interactive === 'user_basis_axis' && meta.basis_key === 'user_openxr_to_robot') {
+          rotateUserBasis(meta.axis_key, +1);
+        }
+      });
+      plot.addEventListener('contextmenu', (event) => {
+        if (hoveredUserAxisMeta && hoveredUserAxisMeta.interactive === 'user_basis_axis' && hoveredUserAxisMeta.basis_key === 'user_openxr_to_robot') {
+          event.preventDefault();
+          rotateUserBasis(hoveredUserAxisMeta.axis_key, -1);
+        }
+      });
+    }
+
+    document.getElementById('h0YawBiasSlider').oninput = (event) => {
+      h0YawBiasDeg = Number(event.target.value || 0);
+      document.getElementById('h0YawBiasValue').textContent = `${h0YawBiasDeg}°`;
+      fastUpdateH0Layer();
+      updateUserRotationState();
+    };
+
+    document.getElementById('resetUserRotation').onclick = () => {
+      h0YawBiasDeg = 0;
+      document.getElementById('h0YawBiasSlider').value = '0';
+      document.getElementById('h0YawBiasValue').textContent = '0°';
+      userRotationMatrix = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ];
+      userRotationHistory = [];
+      fastUpdateH0Layer();
+      updateUserRotationState();
+    };
+
+    Plotly.newPlot('plot', [], {}, {responsive: true, displaylogo: false}).then(() => {
+      bindPlotInteractions();
+      return renderActiveFigure();
+    });
+    updateSummary();
+    updateButtons();
+    updateUserRotationState();
+  </script>
+
+</body>
+</html>
