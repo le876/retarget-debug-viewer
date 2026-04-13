@@ -1,164 +1,164 @@
 # Retarget Debug Page Bundle
 
-这个目录的目标，是把已经生成好的 `retarget_debug_offline.html` 整理成一个可以单独上传到 GitHub 的小仓库结构，方便同事直接打开页面诊断 episode，也方便后续基于同一份数据重新渲染页面。
+This repository packages an already-generated `retarget_debug_offline.html` into a small, shareable structure that can be uploaded to GitHub. The goal is to let teammates open the page directly to inspect episode behavior, and to make it possible to re-render the same viewer from a separated template and data file.
 
-它解决的是“分享和复用调试页”这个问题，不负责从原始 episode 直接计算重定向结果。也就是说，这个目录位于诊断链路的末端，前面仍然需要有一条能产出 `retarget_debug_offline.html` 的上游流程。
+This repository solves the "share and reuse the debug page" problem. It does not compute retargeting results directly from raw episode data. In other words, this repository sits at the end of the diagnostic pipeline. An upstream process must already exist to generate `retarget_debug_offline.html`.
 
-## 目录说明
+## Repository Layout
 
 - `bundle_page.py`
-  - 从现有离线 HTML 中抽取页面结构和页面数据，输出一个更适合分享的 bundle。
+  - Extracts page structure and page data from an existing offline HTML page and writes out a shareable bundle.
 - `generate_page.py`
-  - 根据 bundle 内的 `page_template.html` 和 `data/page_data.json` 重新生成 HTML 页面。
+  - Regenerates the HTML page from `page_template.html` and `data/page_data.json`.
 - `current_bundle/`
-  - 当前页面导出的示例 bundle，可以直接打开验证。
+  - A sample bundle exported from the current page. It can be opened directly for verification.
 - `tests/`
-  - 核心抽取与再生成逻辑的测试。
+  - Regression tests for the extraction and regeneration logic.
 
-## 它具体解决什么问题
+## What Problem This Solves
 
-原始的 `retarget_debug_offline.html` 是一个“大一统离线页”：
+The original `retarget_debug_offline.html` is a single self-contained offline page:
 
-- 前端逻辑在 HTML 里
-- Plotly 也被内联在 HTML 里
-- 图上的轨迹、摘要、交互状态默认值也都塞在 HTML 里
+- Frontend logic is embedded directly in the HTML
+- Plotly is inlined into the HTML
+- Trajectories, summaries, and default interaction state are also embedded in the HTML
 
-这样单文件分发虽然简单，但有两个明显问题：
+That single-file format is convenient for quick sharing, but it has two clear drawbacks:
 
-- 文件太大，不利于上传、review 和后续维护
-- 数据和页面逻辑耦合在一起，不方便同事替换成自己的 episode 数据
+- The file is too large for comfortable upload, review, and maintenance
+- Page logic and episode data are tightly coupled, so teammates cannot easily swap in their own episode data
 
-这个 bundle 目录的做法是把页面拆成三层：
+This repository splits the page into three layers:
 
 1. `page_template.html`
-   - 保留页面布局、样式、交互逻辑
-   - 用 `PAGE_DATA` 占位注入数据
+   - Keeps the page layout, styles, and interaction logic
+   - Uses `PAGE_DATA` as the injected data entry point
 2. `data/page_data.json`
-   - 单独保存页面所需的轨迹、摘要、figure、payload
+   - Stores trajectories, summaries, figures, and payloads separately
 3. `retarget_debug_offline.html`
-   - 由模板和数据重新渲染得到的最终页面
+   - The final page regenerated from the template and the data
 
-这样做以后，你可以把“页面壳”和“页面数据”分开管理。同事如果只想看你的结果，直接打开最终 HTML 就行；如果想复用页面结构诊断自己的 episode，就替换 `page_data.json` 再渲染一次。
+After this split, the page shell and the episode data can be managed independently. If a teammate only wants to inspect your result, they can open the final HTML directly. If they want to reuse the viewer for their own episode, they can replace `page_data.json` and re-render the page.
 
-## 具体实现
+## Implementation Details
 
-### 1. `bundle_page.py` 做了什么
+### 1. What `bundle_page.py` Does
 
-`bundle_page.py` 的输入是一份已经可以打开的 `retarget_debug_offline.html`。
+`bundle_page.py` takes an already-working `retarget_debug_offline.html` as input.
 
-它会做几件事：
+It performs the following steps:
 
-1. 找到页面里最后一个 `<script>` 块
-   - 这个块里保存了页面运行时的大对象，比如 `figures`、`summaries`、`payloads`、`variantLabels`
-2. 把这些对象抽出来，写进 `data/page_data.json`
-3. 把原始 HTML 里的内联 Plotly 替换成 CDN 引用
-4. 把原来直接写死在 HTML 里的数据对象替换成统一入口 `PAGE_DATA`
-5. 产出一个更轻的 `page_template.html`
-6. 再用模板和 JSON 数据重新生成一份 `retarget_debug_offline.html`
+1. Finds the last `<script>` block in the page
+   - This block contains the main runtime objects such as `figures`, `summaries`, `payloads`, and `variantLabels`
+2. Extracts those objects into `data/page_data.json`
+3. Replaces the original inline Plotly bundle with a CDN reference
+4. Replaces hardcoded page data objects with a unified `PAGE_DATA` entry point
+5. Produces a lighter `page_template.html`
+6. Regenerates a new `retarget_debug_offline.html` from the template and the JSON data
 
-因此，`bundle_page.py` 本质上是一个“离线页解包器 + 轻量重打包器”。
+So `bundle_page.py` is effectively an "offline page unpacker plus lightweight repackager".
 
-### 2. `generate_page.py` 做了什么
+### 2. What `generate_page.py` Does
 
-`generate_page.py` 很简单：
+`generate_page.py` is intentionally simple:
 
-- 读入 `page_template.html`
-- 读入 `data/page_data.json`
-- 把 JSON 数据注入 `PAGE_DATA`
-- 输出新的 `retarget_debug_offline.html`
+- Read `page_template.html`
+- Read `data/page_data.json`
+- Inject the JSON payload into `PAGE_DATA`
+- Write a new `retarget_debug_offline.html`
 
-这一步不重新做 retarget，也不重新算 IK。它只负责页面渲染层面的重建。
+This step does not recompute retargeting, and it does not rerun IK. It only rebuilds the page at the rendering layer.
 
-### 3. 页面数据里包含什么
+### 3. What Is Stored in the Page Data
 
-当前页面数据来自上游已经生成好的调试页，所以 `page_data.json` 里包含的是诊断结果，而不是原始传感器流。主要包括：
+Because the current page data comes from an upstream debug page that has already been generated, `page_data.json` contains diagnostic results rather than raw sensor streams. It mainly includes:
 
 - `figures`
-  - Plotly 需要的轨迹、图层、布局
+  - Plotly traces, layers, and layouts
 - `summaries`
-  - 页面右下角/摘要面板里展示的关键信息
+  - Key summary fields shown in the page panels
 - `payloads`
-  - 页面交互逻辑要用到的轨迹点、坐标系、目标点等
+  - Trajectory points, coordinate frames, target points, and related data used by frontend interactions
 - `variantLabels`
-  - 不同 episode 或不同输入分组在页面中的切换按钮
+  - Labels for switching between episode groups or input variants
 - `activeVariantKey`
-  - 默认打开时选中的数据分组
+  - The default active variant when the page loads
 
-对于当前这类 UMI replay 调试页，页面通常会包含这些语义层：
+For the current UMI replay debug page, the page typically includes these semantic layers:
 
-- `W0` 固定世界系
-- `H0` 初始头显系
-- `H0+10` 对照层
-- 机器人默认中立骨架
-- 左右手重定向目标
-- 固定 collar replay 轨迹组
+- `W0` fixed world frame
+- `H0` initial headset frame
+- `H0+10` comparison layer
+- Default neutral robot skeleton
+- Left and right retarget targets
+- Fixed-collar replay trajectory group
 
-## 与 capstone 的关系
+## Relationship to Capstone
 
-### 先说边界
+### First, the Boundary
 
-这个目录**不直接调用** `capstone/umi_robot`，也**不替代** capstone 的 replay 语义。它和 capstone 的关系是：
+This repository does **not** call `capstone/umi_robot` directly, and it does **not** replace Capstone replay semantics. Its relationship to Capstone is:
 
 - `capstone/umi_robot`
-  - 提供语义参考和 replay 流程参考
-- 上游 replay / retarget 脚本
-  - 根据 capstone 语义把 episode 转成可诊断的离线调试页
+  - Provides semantic reference and replay flow reference
+- Upstream replay / retarget scripts
+  - Convert an episode into a diagnosable offline debug page using Capstone semantics
 - `retarget_debug_page_bundle`
-  - 把这份调试页整理成可分享、可复用的 bundle
+  - Turns that debug page into a reusable and shareable bundle
 
-所以，这个目录在整条链路里的位置是最下游。
+So this repository belongs to the final stage of the full pipeline.
 
-### 当前采用的 capstone 语义
+### Capstone Semantics Assumed by the Current Workflow
 
-根据当前项目约定，这条调试链路是按 capstone 的这些语义在对齐：
+Based on the current project setup, the diagnostic chain is aligned to the following Capstone semantics:
 
-- `collar` 作为 headset anchor
-- replay 流程参考 `warmup -> sync -> playback`
-- 当前 humanoid replay 主线使用固定 collar 的 position-only 语义
+- `collar` is treated as the headset anchor
+- Replay flow follows `warmup -> sync -> playback`
+- The current humanoid replay mainline uses fixed-collar, position-only semantics
 - `arm_pose_frame = capstone_headset_relative`
 - `fixed_collar_replay = true`
 - `position_only = true`
 
-这几点非常重要，因为同事如果拿别的 episode 来比对，必须先确认他们的上游 episode 也是按同一套语义转出来的。否则页面虽然能打开，但几何意义就不一致。
+These assumptions matter. If teammates want to compare their own episodes against this page, they must first make sure their upstream episode conversion uses the same semantics. Otherwise the page may still render, but the geometry will not be comparable.
 
-### 它如何和 capstone 配合使用
+### How This Repository Works with Capstone
 
-推荐按下面顺序理解：
+The recommended way to think about the flow is:
 
-1. 在上游链路里，先按 capstone 语义处理 episode
-   - 用 `collar` 作为 anchor
-   - 按 `warmup -> sync -> playback` 的时间组织方式生成 replay
-   - 在当前主线中保持 fixed-collar、position-only 语义
-2. 上游脚本生成一份调试页
-   - 典型产物是 `/tmp/umireplay_retarget_debug/retarget_debug_offline.html`
-3. 再用本目录把这份调试页打包出来
-   - 抽出模板
-   - 抽出页面数据
-   - 重建一个更适合分享的 bundle
-4. 把 bundle 发给同事
-   - 同事直接打开 HTML 看结果
-   - 或者替换成自己的 `page_data.json` 做对照
+1. Process the episode upstream using Capstone semantics
+   - Use `collar` as the anchor
+   - Organize replay around `warmup -> sync -> playback`
+   - Keep the current fixed-collar, position-only replay semantics
+2. Let the upstream scripts generate a debug page
+   - A typical output is `/tmp/umireplay_retarget_debug/retarget_debug_offline.html`
+3. Use this repository to package that debug page
+   - Extract the template
+   - Extract the page data
+   - Rebuild a lighter, shareable bundle
+4. Share the bundle with teammates
+   - They can open the HTML directly to inspect the result
+   - Or they can replace `page_data.json` with their own data for side-by-side style reuse
 
-### 一个更实用的理解方式
+### A More Practical Interpretation
 
-如果把 capstone 看成“语义规范和 replay 参考”，那这个 bundle 就是“诊断报告封装器”。
+If Capstone is treated as the semantic standard and replay reference, then this bundle is the delivery format for the diagnostic report.
 
-也就是说：
+In that sense:
 
-- capstone 决定你该怎么看数据
-- 上游 retarget / replay 脚本决定你算出什么结果
-- 这个 bundle 决定你怎么把结果发给别人看
+- Capstone decides how the data should be interpreted
+- Upstream retarget / replay scripts decide what results get computed
+- This bundle decides how those results get shared and viewed
 
-## 适用场景
+## Typical Use Cases
 
-- 你已经有一份可打开的 `retarget_debug_offline.html`
-- 你希望把它和生成逻辑拆出来，单独传给同事或上传到 GitHub
-- 同事希望直接打开页面，观察某个 episode 的轨迹、重定向目标和调试摘要
-- 同事也在沿用 capstone 对齐过的 replay 语义，希望横向比较不同 episode
+- You already have a working `retarget_debug_offline.html`
+- You want to split its logic and data so the page can be uploaded or shared more cleanly
+- Teammates want to open the page and inspect trajectories, retarget targets, and debug summaries
+- Teammates are also using a Capstone-aligned replay pipeline and want to compare different episodes consistently
 
-## 生成当前 bundle
+## Generate the Current Bundle
 
-在这个目录下运行：
+Run this in the repository:
 
 ```bash
 python3 bundle_page.py \
@@ -166,15 +166,15 @@ python3 bundle_page.py \
   --bundle-dir current_bundle
 ```
 
-执行后会生成：
+This generates:
 
 - `current_bundle/page_template.html`
 - `current_bundle/data/page_data.json`
 - `current_bundle/retarget_debug_offline.html`
 
-## 重新生成 HTML
+## Regenerate the HTML
 
-如果你修改了 `page_template.html` 或 `data/page_data.json`，可以重新渲染：
+If you modify `page_template.html` or `data/page_data.json`, you can re-render the page with:
 
 ```bash
 python3 generate_page.py \
@@ -183,37 +183,37 @@ python3 generate_page.py \
   --output current_bundle/retarget_debug_offline.html
 ```
 
-## 同事如何使用
+## How Teammates Can Use It
 
-同事有两种使用方式：
+There are two main usage patterns:
 
-1. 只看结果
-   - 直接打开 `current_bundle/retarget_debug_offline.html`
-2. 复用页面结构看自己的结果
-   - 保持 `page_template.html` 不变
-   - 替换 `data/page_data.json`
-   - 运行 `generate_page.py`
+1. Inspect your result directly
+   - Open `current_bundle/retarget_debug_offline.html`
+2. Reuse the page shell for another episode
+   - Keep `page_template.html` unchanged
+   - Replace `data/page_data.json`
+   - Run `generate_page.py`
 
-更严格一点说，如果同事要做“和你这份页面有意义的横向对比”，需要保证：
+For meaningful cross-episode comparison, teammates should ensure that:
 
-- episode 的语义和你的上游链路一致
-- 同样按 capstone 的 collar anchor 思路处理
-- 同样使用 fixed-collar / position-only 这条 replay 主线
+- Their episode was processed with the same upstream semantic assumptions
+- They also follow the Capstone collar-anchor interpretation
+- They also use the fixed-collar, position-only replay mainline
 
-否则页面只是“能显示”，但不一定“可比较”。
+Otherwise the page may still render correctly, but the result is not guaranteed to be comparable.
 
-## 关于 Plotly
+## Plotly
 
-为了让目录更轻量，生成后的模板会把内联 Plotly 替换成 CDN：
+To keep the repository lighter, the generated template replaces the inline Plotly bundle with a CDN reference:
 
 ```text
 https://cdn.plot.ly/plotly-2.35.2.min.js
 ```
 
-这意味着：
+That means:
 
-- GitHub 上传体积更小
-- 通过 GitHub Pages 打开更方便
-- 打开页面时需要能访问公网
+- Smaller repository size
+- Easier use with GitHub Pages
+- The page requires public network access to load Plotly
 
-如果你后面想做成完全离线包，可以再把 Plotly 改成随仓库一起分发的本地文件。
+If a fully offline distribution is required later, Plotly can be bundled locally instead of using the CDN.
